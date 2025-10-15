@@ -1,0 +1,6 @@
+# Ignore generated output files
+*.jsonld
+board-save.json
+
+AGENTS.md
+VOCABULARY.md

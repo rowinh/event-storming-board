@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Event Storming Board</title>
+    <script src="https://unpkg.com/konva@9.3.6/konva.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="controls">
+        <p style="margin: 0 0 5px 0; font-weight: bold;">Add Sticky</p>
+        <!-- Buttons will be added here by JavaScript -->
+        <hr style="width:100%; border:1px solid #eee; margin: 10px 0;">
+        <button id="saveBtn">Save Work</button>
+        <button id="loadBtn">Load Work</button>
+        <input type="file" id="fileInput" style="display: none;" accept=".json">
+        <hr style="width:100%; border:1px solid #eee; margin: 10px 0;">
+        <button id="exportBtn" style="background-color: #c0f0c0;">Export to JSON-LD</button>
+        <hr style="width:100%; border:1px solid #eee; margin: 10px 0;">
+        <button id="resetBtn" style="background-color: #ffdddd;">Reset Board</button>
+    </div>
+    <div id="container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

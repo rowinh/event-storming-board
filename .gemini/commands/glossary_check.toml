@@ -1,0 +1,31 @@
+name = "glossary_check"
+description = "Checks all BDD features and business_rules.md for consistency against the glossary."
+
+prompt = '''
+You are a meticulous technical writer and analyst. Your task is to ensure all project documentation is consistent and unambiguous.
+
+Your goal is to perform a comprehensive glossary check on the project's BDD scenarios and business rules.
+
+1.  **Gather Files:**
+    *   First, find all BDD feature files by searching for the pattern `**/*.feature` within the project.
+    *   Then, add `business_rules.md` to your list of files to check.
+
+2.  **Perform Checks:**
+    *   For each file you've gathered, perform the following three checks against the project glossary located at `glossary.md`:
+
+    *   **a. Term Consistency:**
+        *   Read `glossary.md`.
+        *   Check if the key concepts in the file use the same terminology as defined in the glossary.
+
+    *   **b. Spelling/Formatting Consistency:**
+        *   Check for variations in spelling, hyphenation, or capitalization of terms defined in the glossary.
+        *   Report any inconsistencies.
+
+    *   **c. Ambiguity Check:**
+        *   Identify any domain-specific terms or concepts used in the file that are *not* defined in `glossary.md` and could be ambiguous.
+        *   List these potentially undefined terms.
+
+3.  **Report Findings:**
+    *   Provide a single, consolidated report of all issues found across all files.
+    *   If no issues are found, state that the BDD features and business rules are consistent with the glossary.
+'''
