@@ -17,6 +17,9 @@ stage.add(gridLayer);
 const mainLayer = new Konva.Layer();
 stage.add(mainLayer);
 
+const tr = new Konva.Transformer({ keepRatio: false, borderStroke: '#009dff', borderStrokeWidth: 2, anchorStroke: '#009dff', anchorFill: 'white', anchorSize: 10 });
+mainLayer.add(tr);
+
 function drawGrid() {
     gridLayer.destroyChildren();
     const gridSize = 50;
@@ -52,24 +55,27 @@ stage.on('dragmove', drawGrid);
 
 let nodes = [];
 let stickyCounter = 0;
-let selectedNodeId = null;
 
-function newSticky(x, y, typeName, typeInfo, id = null, label = null) {
+function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 150, height = 100) {
     const newId = id || 'node-' + stickyCounter++;
     if (!id) stickyCounter = Math.max(stickyCounter, parseInt(newId.split('-')[1]) + 1);
 
     const stickyGroup = new Konva.Group({ x: x, y: y, draggable: true, id: newId });
 
-    const stickyRect = new Konva.Rect({ width: 150, height: 100, fill: typeInfo.color, cornerRadius: 5, shadowColor: 'black', shadowBlur: 10, shadowOpacity: 0.3, shadowOffsetX: 5, shadowOffsetY: 5 });
-    const stickyText = new Konva.Text({ text: label || typeInfo.text, fontSize: 16, fontFamily: 'sans-serif', fill: '#333', width: 150, height: 100, padding: 10, align: 'center', verticalAlign: 'middle' });
+    const stickyRect = new Konva.Rect({ width: width, height: height, fill: typeInfo.color, cornerRadius: 5, shadowColor: 'black', shadowBlur: 10, shadowOpacity: 0.3, shadowOffsetX: 5, shadowOffsetY: 5 });
+    const stickyText = new Konva.Text({ text: label || typeInfo.text, fontSize: 16, fontFamily: 'sans-serif', fill: '#333', width: width, height: height, padding: 10, align: 'center', verticalAlign: 'middle' });
 
     stickyGroup.add(stickyRect, stickyText);
     mainLayer.add(stickyGroup);
-    nodes.push({ id: newId, type: typeName, textObj: stickyText, group: stickyGroup });
+    nodes.push({ id: newId, type: typeName, textObj: stickyText, rectObj: stickyRect, group: stickyGroup });
 
     stage.draw();
 
-    stickyGroup.on('click', (e) => { e.evt.stopPropagation(); selectNode(newId); });
+    stickyGroup.on('click', (e) => {
+        e.evt.stopPropagation();
+        const isMultiSelect = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+        selectNodes([newId], isMultiSelect);
+    });
 
     stickyGroup.on('dblclick dbltap', () => {
         const textPosition = stickyGroup.getAbsolutePosition();
@@ -93,36 +99,57 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null) {
         textarea.addEventListener('blur', removeTextarea);
         textarea.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) removeTextarea(); });
     });
+
+    stickyGroup.on('transform', () => {
+        stickyRect.width(stickyGroup.width() * stickyGroup.scaleX());
+        stickyRect.height(stickyGroup.height() * stickyGroup.scaleY());
+        stickyText.width(stickyGroup.width() * stickyGroup.scaleX());
+        stickyText.height(stickyGroup.height() * stickyGroup.scaleY());
+        stickyGroup.scaleX(1);
+        stickyGroup.scaleY(1);
+    });
 }
 
-function selectNode(nodeId) {
-    if (selectedNodeId) {
-        const oldNode = mainLayer.findOne('#' + selectedNodeId);
-        if (oldNode) oldNode.findOne('Rect').stroke(null);
-    }
-    selectedNodeId = nodeId;
-    if (nodeId) {
-        const newNode = mainLayer.findOne('#' + nodeId);
-        if (newNode) {
-            const rect = newNode.findOne('Rect');
-            rect.stroke('#ff0000');
-            rect.strokeWidth(3);
+function selectNodes(ids, isMultiSelect = false) {
+    let selectedIds = tr.nodes().map(n => n.id());
+
+    if (isMultiSelect) {
+        ids.forEach(id => {
+            if (selectedIds.includes(id)) {
+                selectedIds = selectedIds.filter(selectedId => selectedId !== id);
+            } else {
+                selectedIds.push(id);
+            }
+        });
+    } else {
+        // If clicking a single already-selected node, do nothing. Otherwise, select only that node.
+        if (selectedIds.length === 1 && selectedIds[0] === ids[0]) {
+            return;
         }
+        selectedIds = ids;
     }
-    mainLayer.draw();
+
+    const newNodes = selectedIds.map(id => mainLayer.findOne('#' + id)).filter(Boolean);
+    tr.nodes(newNodes);
+    mainLayer.batchDraw();
 }
 
-stage.on('click', (e) => { if (e.target === stage) selectNode(null); });
+stage.on('click', (e) => { if (e.target === stage) selectNodes([]); });
 
 window.addEventListener('keydown', (e) => {
-    if ((e.key === 'Backspace' || e.key === 'Delete') && selectedNodeId && document.activeElement.tagName.toLowerCase() !== 'textarea') {
-        const nodeToRemove = nodes.find(n => n.id === selectedNodeId);
-        if (nodeToRemove) {
-            nodeToRemove.group.destroy();
-            nodes = nodes.filter(n => n.id !== selectedNodeId);
-            selectedNodeId = null;
-            mainLayer.draw();
-        }
+    if ((e.key === 'Backspace' || e.key === 'Delete') && document.activeElement.tagName.toLowerCase() !== 'textarea') {
+        const selectedKonvaNodes = tr.nodes();
+        if (selectedKonvaNodes.length === 0) return;
+
+        const idsToRemove = selectedKonvaNodes.map(n => n.id());
+        selectedKonvaNodes.forEach(node => node.destroy());
+        nodes = nodes.filter(n => !idsToRemove.includes(n.id));
+        tr.nodes([]);
+        mainLayer.batchDraw();
+    } else if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+        e.preventDefault();
+        const allNodeIds = nodes.map(n => n.id);
+        selectNodes(allNodeIds, false); // false to replace current selection
     }
 });
 
@@ -139,7 +166,7 @@ Object.entries(stickyTypes).forEach(([typeName, typeInfo]) => {
 });
 
 document.getElementById('saveBtn').addEventListener('click', () => {
-    const saveData = nodes.map(n => ({ id: n.id, type: n.type, label: n.textObj.text(), x: n.group.x(), y: n.group.y() }));
+    const saveData = nodes.map(n => ({ id: n.id, type: n.type, label: n.textObj.text(), x: n.group.x(), y: n.group.y(), width: n.rectObj.width(), height: n.rectObj.height() }));
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(saveData, null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
@@ -161,7 +188,7 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
         nodes = [];
         loadedNodes.forEach(nodeData => {
             const typeInfo = stickyTypes[nodeData.type];
-            if (typeInfo) newSticky(nodeData.x, nodeData.y, nodeData.type, typeInfo, nodeData.id, nodeData.label);
+            if (typeInfo) newSticky(nodeData.x, nodeData.y, nodeData.type, typeInfo, nodeData.id, nodeData.label, nodeData.width, nodeData.height);
         });
         mainLayer.batchDraw();
     };
@@ -173,13 +200,13 @@ document.getElementById('resetBtn').addEventListener('click', () => {
     if (confirm('Are you sure you want to clear the entire board?')) {
         mainLayer.destroyChildren();
         nodes = [];
-        selectedNodeId = null;
+        tr.nodes([]);
         mainLayer.draw();
     }
 });
 
 document.getElementById('exportBtn').addEventListener('click', () => {
-    const currentNodes = nodes.map(n => ({ id: n.id, type: n.type, label: n.textObj.text(), x: n.group.x(), y: n.group.y() }));
+    const currentNodes = nodes.map(n => ({ id: n.id, type: n.type, label: n.textObj.text(), x: n.group.x(), y: n.group.y(), width: n.rectObj.width(), height: n.rectObj.height() }));
     const graph = translateToGraph(currentNodes);
     const jsonLd = {
         "@context": { "@version": 1.1, "@base": "https://eventstorming.linked.events/resource/", "es": "https://eventstorming.linked.events/ontology#", "rdfs": "http://www.w3.org/2000/01/rdf-schema#", "label": "rdfs:label", "precededBy": { "@id": "es:precededBy", "@type": "@id" }, "triggers": { "@id": "es:triggers", "@type": "@id" }, "target": { "@id": "es:target", "@type": "@id" }, "initiates": { "@id": "es:initiates", "@type": "@id" }, "updates": { "@id": "es:updates", "@type": "@id" } },
@@ -195,7 +222,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 });
 
 function translateToGraph(boardNodes) {
-    const graphNodes = boardNodes.map(n => ({ "@id": n.id, "@type": "es:" + n.type, "label": n.label }));
+    const graphNodes = boardNodes.map(n => ({ "@id": n.id, "@type": "es:" + n.type, "label": n.label, "es:width": n.width, "es:height": n.height }));
     const nodeMap = new Map(graphNodes.map(n => [n['@id'], n]));
 
     const distance = (n1, n2) => Math.sqrt(Math.pow(n1.x - n2.x, 2) + Math.pow(n1.y - n2.y, 2));
