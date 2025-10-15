@@ -17,7 +17,15 @@ stage.add(gridLayer);
 const mainLayer = new Konva.Layer();
 stage.add(mainLayer);
 
-const tr = new Konva.Transformer({ keepRatio: false, borderStroke: '#009dff', borderStrokeWidth: 2, anchorStroke: '#009dff', anchorFill: 'white', anchorSize: 10 });
+const tr = new Konva.Transformer({
+    keepRatio: false,
+    borderStroke: '#009dff',
+    borderStrokeWidth: 2,
+    anchorStroke: '#009dff',
+    anchorFill: 'white',
+    anchorSize: 10,
+    boundBoxFunc: (oldBox, newBox) => (newBox.width < 20 || newBox.height < 20) ? oldBox : newBox
+});
 mainLayer.add(tr);
 
 function drawGrid() {
@@ -60,12 +68,18 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
     const newId = id || 'node-' + stickyCounter++;
     if (!id) stickyCounter = Math.max(stickyCounter, parseInt(newId.split('-')[1]) + 1);
 
-    const stickyGroup = new Konva.Group({ x: x, y: y, draggable: true, id: newId });
+    const stickyGroup = new Konva.Group({ x: x, y: y, draggable: true, id: newId, dragOnTop: false });
 
     const stickyRect = new Konva.Rect({ width: width, height: height, fill: typeInfo.color, cornerRadius: 5, shadowColor: 'black', shadowBlur: 10, shadowOpacity: 0.3, shadowOffsetX: 5, shadowOffsetY: 5 });
     const stickyText = new Konva.Text({ text: label || typeInfo.text, fontSize: 16, fontFamily: 'sans-serif', fill: '#333', width: width, height: height, padding: 10, align: 'center', verticalAlign: 'middle' });
 
     stickyGroup.add(stickyRect, stickyText);
+    // This is the definitive fix: By stopping the 'mousedown' event from bubbling
+    // up to the stage, we prevent the stage from ever entering its own drag
+    // state when the user's intent is to interact with a sticky.
+    stickyGroup.on('mousedown', (e) => {
+        e.evt.stopPropagation();
+    });
     mainLayer.add(stickyGroup);
     nodes.push({ id: newId, type: typeName, textObj: stickyText, rectObj: stickyRect, group: stickyGroup });
 
@@ -100,14 +114,7 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
         textarea.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) removeTextarea(); });
     });
 
-    stickyGroup.on('transform', () => {
-        stickyRect.width(stickyGroup.width() * stickyGroup.scaleX());
-        stickyRect.height(stickyGroup.height() * stickyGroup.scaleY());
-        stickyText.width(stickyGroup.width() * stickyGroup.scaleX());
-        stickyText.height(stickyGroup.height() * stickyGroup.scaleY());
-        stickyGroup.scaleX(1);
-        stickyGroup.scaleY(1);
-    });
+    // The 'transform' event is removed. We will handle the logic in 'transformend'.
 }
 
 function selectNodes(ids, isMultiSelect = false) {
@@ -135,6 +142,28 @@ function selectNodes(ids, isMultiSelect = false) {
 }
 
 stage.on('click', (e) => { if (e.target === stage) selectNodes([]); });
+
+// When a transform operation ends, we need to iterate through all transformed
+// nodes to ensure their internal state (width/height) is updated correctly.
+tr.on('transformend', () => {
+    tr.nodes().forEach(group => {
+        const node = nodes.find(n => n.id === group.id());
+        const rect = group.findOne('Rect');
+        const text = group.findOne('Text');
+
+        if (node) {
+            // Apply the transformation to the inner shapes
+            const newWidth = rect.width() * group.scaleX();
+            const newHeight = rect.height() * group.scaleY();
+            rect.size({ width: newWidth, height: newHeight });
+            text.size({ width: newWidth, height: newHeight });
+
+            // Reset the group's scale
+            group.scaleX(1);
+            group.scaleY(1);
+        }
+    });
+});
 
 window.addEventListener('keydown', (e) => {
     if ((e.key === 'Backspace' || e.key === 'Delete') && document.activeElement.tagName.toLowerCase() !== 'textarea') {
