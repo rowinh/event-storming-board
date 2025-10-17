@@ -102,7 +102,14 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
         stickyText.hide();
         mainLayer.draw();
         textarea.focus();
+
+        const enterListener = (e) => { if (e.key === 'Enter' && !e.shiftKey) removeTextarea(); };
+
         function removeTextarea() {
+            // Remove listeners immediately to prevent this function from being called twice.
+            textArea.removeEventListener('blur', removeTextarea);
+            textArea.removeEventListener('keydown', enterListener);
+
             if (document.body.contains(textarea)) {
                 document.body.removeChild(textarea);
                 stickyText.text(textarea.value);
@@ -111,7 +118,8 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
             }
         }
         textarea.addEventListener('blur', removeTextarea);
-        textarea.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) removeTextarea(); });
+        textarea.addEventListener('keydown', enterListener);
+
     });
 
     // The 'transform' event is removed. We will handle the logic in 'transformend'.
@@ -288,28 +296,26 @@ function translateToMarkdown(graph) {
 
     // 1. Timeline
     md += "## Timeline\n\n";
-    const timelineEvents = sections.DomainEvent.sort((a, b) => {
-        let aNode = a;
-        while (aNode.precededBy) aNode = findNode(aNode.precededBy);
-        let bNode = b;
-        while (bNode.precededBy) bNode = findNode(bNode.precededBy);
-        return graph.indexOf(aNode) - graph.indexOf(bNode); // Fallback sort
+    const allEvents = sections.DomainEvent;
+    const eventIds = new Set(allEvents.map(e => e['@id']));
+    const startEvents = allEvents.filter(e => !e.precededBy || !eventIds.has(e.precededBy));
+
+    startEvents.forEach(startEvent => {
+        let timeline = [];
+        let current = startEvent;
+        while (current) {
+            timeline.push(current);
+            current = allEvents.find(e => e.precededBy === current['@id']);
+        }
+        timeline.forEach((event,index) => {
+            md += `${" ".repeat(index * 2)}- **${event.label}** (*Domain Event*)\n`;
+        });
+        md += "\n";
     });
 
-    const sortedEvents = [];
-    let currentEvent = timelineEvents.find(e => !e.precededBy && timelineEvents.some(other => other.precededBy === e['@id']));
-    if (!currentEvent && timelineEvents.length > 0) currentEvent = timelineEvents[0];
-    const visited = new Set();
-    while(currentEvent && !visited.has(currentEvent['@id'])) {
-        sortedEvents.push(currentEvent);
-        visited.add(currentEvent['@id']);
-        currentEvent = timelineEvents.find(e => e.precededBy === currentEvent['@id']);
-    }
-
-    sortedEvents.forEach((event, index) => {
+    allEvents.forEach((event,index) => {
         md += `${index + 1}. **${event.label}** (*Domain Event*)\n`;
     });
-
     return md;
 }
 
