@@ -250,6 +250,69 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     downloadAnchorNode.remove();
 });
 
+document.getElementById('exportMdBtn').addEventListener('click', () => {
+    const currentNodes = nodes.map(n => ({ id: n.id, type: n.type, label: n.textObj.text(), x: n.group.x(), y: n.group.y(), width: n.rectObj.width(), height: n.rectObj.height() }));
+    const graph = translateToGraph(currentNodes);
+    const markdown = translateToMarkdown(graph);
+
+    const dataStr = "data:text/markdown;charset=utf-8," + encodeURIComponent(markdown);
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "output.md");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+});
+
+function translateToMarkdown(graph) {
+    const nodeMap = new Map(graph.map(n => [n['@id'], n]));
+    const findNode = id => nodeMap.get(id);
+
+    const sections = {
+        DomainEvent: [],
+        Command: [],
+        Aggregate: [],
+        Policy: [],
+        User: [],
+        ReadModel: []
+    };
+
+    graph.forEach(node => {
+        const type = node['@type'].replace('es:', '');
+        if (sections[type]) {
+            sections[type].push(node);
+        }
+    });
+
+    let md = "# Event Storming Diagram\n\n";
+
+    // 1. Timeline
+    md += "## Timeline\n\n";
+    const timelineEvents = sections.DomainEvent.sort((a, b) => {
+        let aNode = a;
+        while (aNode.precededBy) aNode = findNode(aNode.precededBy);
+        let bNode = b;
+        while (bNode.precededBy) bNode = findNode(bNode.precededBy);
+        return graph.indexOf(aNode) - graph.indexOf(bNode); // Fallback sort
+    });
+
+    const sortedEvents = [];
+    let currentEvent = timelineEvents.find(e => !e.precededBy && timelineEvents.some(other => other.precededBy === e['@id']));
+    if (!currentEvent && timelineEvents.length > 0) currentEvent = timelineEvents[0];
+    const visited = new Set();
+    while(currentEvent && !visited.has(currentEvent['@id'])) {
+        sortedEvents.push(currentEvent);
+        visited.add(currentEvent['@id']);
+        currentEvent = timelineEvents.find(e => e.precededBy === currentEvent['@id']);
+    }
+
+    sortedEvents.forEach((event, index) => {
+        md += `${index + 1}. **${event.label}** (*Domain Event*)\n`;
+    });
+
+    return md;
+}
+
 function translateToGraph(boardNodes) {
     const graphNodes = boardNodes.map(n => ({ "@id": n.id, "@type": "es:" + n.type, "label": n.label, "es:width": n.width, "es:height": n.height }));
     const nodeMap = new Map(graphNodes.map(n => [n['@id'], n]));
