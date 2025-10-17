@@ -73,12 +73,15 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
     const stickyRect = new Konva.Rect({ width: width, height: height, fill: typeInfo.color, cornerRadius: 5, shadowColor: 'black', shadowBlur: 10, shadowOpacity: 0.3, shadowOffsetX: 5, shadowOffsetY: 5 });
     const stickyText = new Konva.Text({ text: label || typeInfo.text, fontSize: 16, fontFamily: 'sans-serif', fill: '#333', width: width, height: height, padding: 10, align: 'center', verticalAlign: 'middle' });
 
+    let isEditing = false; // Initialize isEditing flag for this sticky
+
     stickyGroup.add(stickyRect, stickyText);
     // This is the definitive fix: By stopping the 'mousedown' event from bubbling
     // up to the stage, we prevent the stage from ever entering its own drag
     // state when the user's intent is to interact with a sticky.
     stickyGroup.on('mousedown', (e) => {
-        e.evt.stopPropagation();
+        e.evt.stopPropagation(); // Always stop propagation
+        if (isEditing) return; // Prevent dragging if editing
     });
     mainLayer.add(stickyGroup);
     nodes.push({ id: newId, type: typeName, textObj: stickyText, rectObj: stickyRect, group: stickyGroup });
@@ -92,6 +95,7 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
     });
 
     stickyGroup.on('dblclick dbltap', () => {
+        isEditing = true; // Set editing flag to true
         const textPosition = stickyGroup.getAbsolutePosition();
         const stageBox = stage.container().getBoundingClientRect();
         const areaPosition = { x: stageBox.left + textPosition.x, y: stageBox.top + textPosition.y };
@@ -107,8 +111,8 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
 
         function removeTextarea() {
             // Remove listeners immediately to prevent this function from being called twice.
-            textArea.removeEventListener('blur', removeTextarea);
-            textArea.removeEventListener('keydown', enterListener);
+            textarea.removeEventListener('blur', removeTextarea);
+            textarea.removeEventListener('keydown', enterListener);
 
             if (document.body.contains(textarea)) {
                 document.body.removeChild(textarea);
@@ -116,6 +120,8 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
                 stickyText.show();
                 mainLayer.draw();
             }
+            isEditing = false; // Set editing flag to false
+            stickyGroup.draggable(true); // Explicitly re-enable dragging
         }
         textarea.addEventListener('blur', removeTextarea);
         textarea.addEventListener('keydown', enterListener);
