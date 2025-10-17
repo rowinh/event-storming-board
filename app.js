@@ -73,15 +73,16 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
     const stickyRect = new Konva.Rect({ width: width, height: height, fill: typeInfo.color, cornerRadius: 5, shadowColor: 'black', shadowBlur: 10, shadowOpacity: 0.3, shadowOffsetX: 5, shadowOffsetY: 5 });
     const stickyText = new Konva.Text({ text: label || typeInfo.text, fontSize: 16, fontFamily: 'sans-serif', fill: '#333', width: width, height: height, padding: 10, align: 'center', verticalAlign: 'middle' });
 
-    let isEditing = false; // Initialize isEditing flag for this sticky
+    let isEditing = false; // Reintroduce isEditing flag
 
-    stickyGroup.add(stickyRect, stickyText);
-    // This is the definitive fix: By stopping the 'mousedown' event from bubbling
-    // up to the stage, we prevent the stage from ever entering its own drag
-    // state when the user's intent is to interact with a sticky.
+    stickyGroup.add(stickyRect, stickyText); // Re-inserted this line
+
     stickyGroup.on('mousedown', (e) => {
         e.evt.stopPropagation(); // Always stop propagation
-        if (isEditing) return; // Prevent dragging if editing
+        if (isEditing) {
+            stickyGroup.draggable(false); // Explicitly disable dragging if editing
+            return;
+        }
     });
     mainLayer.add(stickyGroup);
     nodes.push({ id: newId, type: typeName, textObj: stickyText, rectObj: stickyRect, group: stickyGroup });
@@ -96,6 +97,7 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
 
     stickyGroup.on('dblclick dbltap', () => {
         isEditing = true; // Set editing flag to true
+        stickyGroup.draggable(false); // Disable dragging when editing starts
         const textPosition = stickyGroup.getAbsolutePosition();
         const stageBox = stage.container().getBoundingClientRect();
         const areaPosition = { x: stageBox.left + textPosition.x, y: stageBox.top + textPosition.y };
@@ -121,7 +123,7 @@ function newSticky(x, y, typeName, typeInfo, id = null, label = null, width = 15
                 mainLayer.draw();
             }
             isEditing = false; // Set editing flag to false
-            stickyGroup.draggable(true); // Explicitly re-enable dragging
+            stickyGroup.draggable(true); // Re-enable dragging when editing ends
         }
         textarea.addEventListener('blur', removeTextarea);
         textarea.addEventListener('keydown', enterListener);
@@ -300,7 +302,7 @@ function translateToMarkdown(graph) {
 
     let md = "# Event Storming Diagram\n\n";
 
-    // 1. Timeline
+    // 1. Timeline (existing logic for Domain Events)
     md += "## Timeline\n\n";
     const allEvents = sections.DomainEvent;
     const eventIds = new Set(allEvents.map(e => e['@id']));
@@ -319,9 +321,55 @@ function translateToMarkdown(graph) {
         md += "\n";
     });
 
-    allEvents.forEach((event,index) => {
-        md += `${index + 1}. **${event.label}** (*Domain Event*)\n`;
-    });
+    // Add sections for all sticky types with detailed relationships
+    for (const typeName in sections) {
+        if (sections[typeName].length > 0) {
+            md += `## ${typeName.replace(/([A-Z])/g, ' $1').trim()}s\n\n`;
+            sections[typeName].forEach(node => {
+                md += `### ${node.label}\n`;
+
+                if (node.precededBy) {
+                    const precededByNode = findNode(node.precededBy);
+                    if (precededByNode) md += `- Preceded by: **${precededByNode.label}** (*${precededByNode['@type'].replace('es:', '')}*)\n`;
+                }
+                if (node.triggers) {
+                    const triggersNode = findNode(node.triggers);
+                    if (triggersNode) md += `- Triggers: **${triggersNode.label}** (*${triggersNode['@type'].replace('es:', '')}*)\n`;
+                }
+                if (node.target) {
+                    const targetNode = findNode(node.target);
+                    if (targetNode) md += `- Targets: **${targetNode.label}** (*${targetNode['@type'].replace('es:', '')}*)\n`;
+                }
+                if (node.initiates) {
+                    const initiatesNode = findNode(node.initiates);
+                    if (initiatesNode) md += `- Initiates: **${initiatesNode.label}** (*${initiatesNode['@type'].replace('es:', '')}*)\n`;
+                }
+                if (node.updates) {
+                    const updatesNode = findNode(node.updates);
+                    if (updatesNode) md += `- Updates: **${updatesNode.label}** (*${updatesNode['@type'].replace('es:', '')}*)\n`;
+                }
+                // Inverse relationships (e.g., what triggers this event, what is this aggregate targeted by)
+                const inverseRelationships = graph.filter(n => 
+                    (n.precededBy === node['@id']) ||
+                    (n.triggers === node['@id']) ||
+                    (n.target === node['@id']) ||
+                    (n.initiates === node['@id']) ||
+                    (n.updates === node['@id'])
+                );
+
+                inverseRelationships.forEach(relNode => {
+                    if (relNode.precededBy === node['@id']) md += `- Precedes: **${relNode.label}** (*${relNode['@type'].replace('es:', '')}*)\n`;
+                    if (relNode.triggers === node['@id']) md += `- Triggered by: **${relNode.label}** (*${relNode['@type'].replace('es:', '')}*)\n`;
+                    if (relNode.target === node['@id']) md += `- Targeted by: **${relNode.label}** (*${relNode['@type'].replace('es:', '')}*)\n`;
+                    if (relNode.initiates === node['@id']) md += `- Initiated by: **${relNode.label}** (*${relNode['@type'].replace('es:', '')}*)\n`;
+                    if (relNode.updates === node['@id']) md += `- Updated by: **${relNode.label}** (*${relNode['@type'].replace('es:', '')}*)\n`;
+                });
+
+                md += "\n";
+            });
+        }
+    }
+
     return md;
 }
 
